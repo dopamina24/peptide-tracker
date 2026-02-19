@@ -304,6 +304,7 @@ function Row({ label, right, onPress, last = false }: { label: string; right: Re
 
 export function DoseLogModal({ preselectedDose, onClose, onSuccess }: Props) {
     const [peptides, setPeptides] = useState<Peptide[]>([]);
+    const [recentPeptideIds, setRecentPeptideIds] = useState<string[]>([]);
     const [selectedPeptideId, setSelectedPeptideId] = useState<string>(preselectedDose?.protocolItem?.peptide_id || "");
     const [doseAmount, setDoseAmount] = useState<string>(preselectedDose ? String(preselectedDose.protocolItem.dose_amount) : "");
     const [doseUnit, setDoseUnit] = useState<string>(preselectedDose?.protocolItem?.dose_unit || "mg");
@@ -324,12 +325,33 @@ export function DoseLogModal({ preselectedDose, onClose, onSuccess }: Props) {
     const supabase = createClient();
 
     useEffect(() => {
-        supabase.from("peptides").select("id,slug,name_es,name_en,half_life_hours,typical_dose_min,typical_dose_max,dose_unit,tags,description_es,side_effects_es,reconstitution_notes_es,routes,popular_for,mechanism_of_action,timing_notes,frequency,fda_status,also_known_as,evidence_level,duration_notes,dose_titration_notes,administration_notes")
-            .order("name_es")
-            .then(({ data, error }) => {
-                if (error) console.error("Peptides query error:", error.message);
-                if (data) setPeptides(data as any);
-            });
+        const loadPeptidesAndHistory = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+
+            // Load peptides
+            const { data: peptidesData } = await supabase
+                .from("peptides")
+                .select("id,slug,name_es,name_en,half_life_hours,typical_dose_min,typical_dose_max,dose_unit,tags,description_es,side_effects_es,reconstitution_notes_es,routes,popular_for,mechanism_of_action,timing_notes,frequency,fda_status,also_known_as,evidence_level,duration_notes,dose_titration_notes,administration_notes")
+                .order("name_es");
+
+            if (peptidesData) setPeptides(peptidesData as any);
+
+            // Load recent usage for suggestions
+            if (user) {
+                const { data: logs } = await supabase
+                    .from("dose_logs")
+                    .select("peptide_id")
+                    .eq("user_id", user.id)
+                    .order("logged_at", { ascending: false })
+                    .limit(20);
+
+                if (logs) {
+                    const uniqueIds = Array.from(new Set(logs.map(l => l.peptide_id)));
+                    setRecentPeptideIds(uniqueIds);
+                }
+            }
+        };
+        loadPeptidesAndHistory();
     }, []);
 
     const selectedPeptide = peptides.find(p => p.id === selectedPeptideId);
@@ -359,278 +381,314 @@ export function DoseLogModal({ preselectedDose, onClose, onSuccess }: Props) {
         onSuccess();
     };
 
-    const isDateToday = format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
-    const dateLabel = isDateToday ? "Hoy" : format(selectedDate, "d 'de' MMMM", { locale: es });
+    // Separate peptides into suggested and others
+    const suggestedPeptides = peptides.filter(p => recentPeptideIds.includes(p.id));
+    const otherPeptides = peptides.filter(p => !recentPeptideIds.includes(p.id));
 
     return (
-        <div className="fixed inset-0 z-50 bg-[#060911] flex flex-col">
-            {/* Info panel overlay */}
-            {showInfo && selectedPeptide && (
-                <PeptideInfoPanel peptide={selectedPeptide} onClose={() => setShowInfo(false)} />
-            )}
-
-            {/* Navigation bar */}
-            <div className="flex items-center justify-between px-4 pt-14 pb-3 border-b border-white/[0.07]">
-                <button type="button" onClick={onClose} className="text-[#22d3ee] text-[17px]">Cancelar</button>
-                <span className="text-white font-semibold text-[17px]">Agregar Dosis</span>
-                <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={loading || !selectedPeptideId || !doseAmount}
-                    className="text-[#22d3ee] text-[17px] font-semibold disabled:opacity-40"
-                >
-                    {loading ? "..." : "Guardar"}
-                </button>
-            </div>
-
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto">
-
-                {/* FECHA */}
-                <SectionHeader title="Fecha" />
-                <div className="mx-4 rounded-2xl overflow-hidden">
-                    <div className="bg-white/6 flex items-center justify-between px-4 py-3">
-                        <button type="button" onClick={() => setSelectedDate(d => subDays(d, 1))}
-                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10">
-                            <ChevronLeft className="w-5 h-5 text-white/70" />
-                        </button>
-                        <span className="text-white font-medium text-[15px]">{dateLabel} ▾</span>
-                        <button type="button" onClick={() => setSelectedDate(d => addDays(d, 1))}
-                            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10">
-                            <ChevronRight className="w-5 h-5 text-white/70" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* TIEMPO */}
-                <SectionHeader title="Tiempo" />
-                <div className="mx-4 rounded-2xl overflow-hidden">
-                    <div className="bg-white/6 flex items-center justify-between px-4 py-1.5">
-                        <span className="text-white text-[15px]">Hora de la dosis</span>
-                        <input
-                            type="time"
-                            value={selectedTime}
-                            onChange={e => setSelectedTime(e.target.value)}
-                            className="bg-transparent text-[#0A84FF] text-[15px] font-medium border-0 outline-none text-right"
-                        />
-                    </div>
-                </div>
-
-                {/* DETALLES */}
-                <SectionHeader title="Detalles" />
-                <div className="mx-4 rounded-2xl overflow-hidden">
-                    {/* Medicamento */}
-                    <Row
-                        label="Medicamento"
-                        onPress={() => setShowPeptidePicker(true)}
-                        right={
-                            <div className="flex items-center gap-2">
-                                {selectedPeptide && (
-                                    <button
-                                        type="button"
-                                        onClick={e => { e.stopPropagation(); setShowInfo(true); }}
-                                        className="w-5 h-5 rounded-full border border-[#22d3ee]/40 text-[#22d3ee] text-[11px] font-bold flex items-center justify-center hover:bg-[#22d3ee]/10"
-                                    >
-                                        i
-                                    </button>
-                                )}
-                                {selectedPeptide ? (
-                                    <span className={`text-[15px] font-medium ${cat?.text || "text-[#22d3ee]"}`}>
-                                        {selectedPeptide.name_es} ↕
-                                    </span>
-                                ) : (
-                                    <span className="text-[#22d3ee] text-[15px]">Seleccionar ↕</span>
-                                )}
-                            </div>
-                        }
-                    />
-
-                    {/* Dosificación */}
-                    <Row
-                        label="Dosificación"
-                        right={
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="number"
-                                    value={doseAmount}
-                                    onChange={e => setDoseAmount(e.target.value)}
-                                    onClick={e => e.stopPropagation()}
-                                    placeholder="0"
-                                    step="any"
-                                    min="0"
-                                    className="bg-transparent text-right w-16 text-white outline-none text-[15px]"
-                                />
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${cat?.bg || "bg-rose-400/15"} ${cat?.text || "text-rose-300"}`}>
-                                    {doseUnit}
-                                </span>
-                                <select
-                                    value={doseUnit}
-                                    onChange={e => setDoseUnit(e.target.value)}
-                                    onClick={e => e.stopPropagation()}
-                                    className="bg-transparent text-[#0A84FF] text-[13px] outline-none -ml-1"
-                                >
-                                    {["mcg", "mg", "IU"].map(u => <option key={u} value={u}>{u}</option>)}
-                                </select>
-                            </div>
-                        }
-                    />
-
-                    {/* Vía */}
-                    <Row
-                        label="Vía"
-                        onPress={() => setShowRoutePicker(true)}
-                        right={<span className="text-[#0A84FF] text-[15px]">{ROUTES.find(r => r.value === route)?.label} ↕</span>}
-                    />
-
-                    {/* Punto de inyección */}
-                    {(route === "subcutaneous" || route === "intramuscular") && (
-                        <Row
-                            label="Punto"
-                            onPress={() => setShowSitePicker(true)}
-                            right={
-                                <span className="text-[#0A84FF] text-[15px] max-w-[180px] text-right truncate">
-                                    {injectionSite || "Seleccionar"} ↕
-                                </span>
-                            }
-                        />
-                    )}
-
-                    {/* Nivel de dolor */}
-                    <div className="bg-white/6 px-4 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-white text-[15px]">Nivel de dolor</span>
-                            <span className="text-white/60 text-[15px]">{painLevel}</span>
-                        </div>
-                        <input
-                            type="range"
-                            min={0} max={10} step={1}
-                            value={painLevel}
-                            onChange={e => setPainLevel(Number(e.target.value))}
-                            className="w-full accent-white"
-                        />
-                        <div className="flex justify-between text-[11px] text-white/30 mt-1">
-                            <span>Sin dolor</span>
-                            <span>Máximo</span>
-                        </div>
-                    </div>
-
-                    {/* Dosis típica hint */}
-                    {selectedPeptide?.typical_dose_min && (
-                        <div className="bg-white/3 px-4 py-2.5 border-t border-white/6">
-                            <p className="text-[12px] text-white/30 text-center">
-                                Rango habitual: {selectedPeptide.typical_dose_min}–{selectedPeptide.typical_dose_max} {selectedPeptide.dose_unit}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Vista previa nivel estimado */}
-                {selectedPeptide && doseAmount && (
-                    <>
-                        <SectionHeader title="Vista previa nivel estimado" />
-                        <div className="mx-4">
-                            <HalfLifeChart logs={[{
-                                logged_at: loggedAt.toISOString(),
-                                dose_amount: parseFloat(doseAmount) || 1,
-                                dose_unit: doseUnit,
-                                peptides: { name_es: selectedPeptide.name_es, half_life_hours: selectedPeptide.half_life_hours }
-                            }]} />
-                        </div>
-                    </>
+        <div className="fixed inset-0 z-50 flex justify-center bg-black/60 backdrop-blur-sm">
+            <div className="w-full max-w-lg bg-[#060911] flex flex-col h-full shadow-2xl relative">
+                {/* Info panel overlay */}
+                {showInfo && selectedPeptide && (
+                    <PeptideInfoPanel peptide={selectedPeptide} onClose={() => setShowInfo(false)} />
                 )}
 
-                {/* NOTAS */}
-                <SectionHeader title="Notas de dosis" />
-                <div className="mx-4 rounded-2xl overflow-hidden">
-                    <textarea
-                        value={notes}
-                        onChange={e => setNotes(e.target.value)}
-                        placeholder="Agregar notas"
-                        rows={3}
-                        className="w-full bg-white/6 px-4 py-3 text-[15px] text-white placeholder:text-white/25
-                       outline-none resize-none border-0"
-                    />
+                {/* Navigation bar */}
+                <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/[0.07]">
+                    <button type="button" onClick={onClose} className="text-[#22d3ee] text-[17px]">Cancelar</button>
+                    <span className="text-white font-semibold text-[17px]">Agregar Dosis</span>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={loading || !selectedPeptideId || !doseAmount}
+                        className="text-[#22d3ee] text-[17px] font-semibold disabled:opacity-40"
+                    >
+                        {loading ? "..." : "Guardar"}
+                    </button>
                 </div>
 
-                <div className="h-12" />
-            </div>
+                {/* Scrollable content */}
+                <div className="flex-1 overflow-y-auto">
 
-            {/* ── Peptide picker modal ── */}
-            {showPeptidePicker && (
-                <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowPeptidePicker(false)}>
-                    <div className="w-full bg-[#1C1C1E] rounded-t-3xl max-h-[70vh] overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
-                            <span className="font-semibold text-white">Medicamento</span>
-                            <button onClick={() => setShowPeptidePicker(false)}
-                                className="text-[#0A84FF] text-[15px]">Listo</button>
-                        </div>
-                        <div className="overflow-y-auto">
-                            {peptides.map(p => {
-                                const c = getPeptideCategory(p.tags || []);
-                                return (
-                                    <button key={p.id} onClick={() => { setSelectedPeptideId(p.id); setShowPeptidePicker(false); }}
-                                        className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
-                      ${selectedPeptideId === p.id ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xl">{c.emoji}</span>
-                                            <div className="text-left">
-                                                <div className="text-white text-[15px]">{p.name_es}</div>
-                                                <div className={`text-[11px] ${c.text}`}>{c.label}</div>
-                                            </div>
-                                        </div>
-                                        {selectedPeptideId === p.id && <span className="text-[#0A84FF] text-lg">✓</span>}
-                                    </button>
-                                );
-                            })}
+                    {/* FECHA */}
+                    <SectionHeader title="Fecha" />
+                    <div className="mx-4 rounded-2xl overflow-hidden">
+                        <div className="bg-white/6 flex items-center justify-between px-4 py-3 relative">
+                            <label className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                                <input
+                                    type="date"
+                                    value={format(selectedDate, "yyyy-MM-dd")}
+                                    onChange={(e) => setSelectedDate(parseISO(e.target.value))}
+                                    className="w-full h-full"
+                                />
+                            </label>
+                            <span className="text-white text-[15px]">Fecha de registro</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[#0A84FF] font-medium text-[15px]">
+                                    {format(selectedDate, "d MMMM yyyy", { locale: es })}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {/* ── Injection site picker ── */}
-            {showSitePicker && (
-                <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowSitePicker(false)}>
-                    <div className="w-full bg-[#1C1C1E] rounded-t-3xl max-h-[60vh] overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
-                            <span className="font-semibold text-white">Punto de inyección</span>
-                            <button onClick={() => setShowSitePicker(false)} className="text-[#0A84FF] text-[15px]">Listo</button>
+                    {/* TIEMPO */}
+                    <SectionHeader title="Tiempo" />
+                    <div className="mx-4 rounded-2xl overflow-hidden">
+                        <div className="bg-white/6 flex items-center justify-between px-4 py-1.5">
+                            <span className="text-white text-[15px]">Hora de la dosis</span>
+                            <input
+                                type="time"
+                                value={selectedTime}
+                                onChange={e => setSelectedTime(e.target.value)}
+                                className="bg-transparent text-[#0A84FF] text-[15px] font-medium border-0 outline-none text-right"
+                            />
                         </div>
-                        <div className="overflow-y-auto">
-                            {INJECTION_SITES.map(site => (
-                                <button key={site} onClick={() => { setInjectionSite(site); setShowSitePicker(false); }}
-                                    className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
+                    </div>
+
+                    {/* DETALLES */}
+                    <SectionHeader title="Detalles" />
+                    <div className="mx-4 rounded-2xl overflow-hidden">
+                        {/* Medicamento */}
+                        <Row
+                            label="Medicamento"
+                            onPress={() => setShowPeptidePicker(true)}
+                            right={
+                                <div className="flex items-center gap-2">
+                                    {selectedPeptide && (
+                                        <button
+                                            type="button"
+                                            onClick={e => { e.stopPropagation(); setShowInfo(true); }}
+                                            className="w-5 h-5 rounded-full border border-[#22d3ee]/40 text-[#22d3ee] text-[11px] font-bold flex items-center justify-center hover:bg-[#22d3ee]/10"
+                                        >
+                                            i
+                                        </button>
+                                    )}
+                                    {selectedPeptide ? (
+                                        <span className={`text-[15px] font-medium ${cat?.text || "text-[#22d3ee]"}`}>
+                                            {selectedPeptide.name_es} ↕
+                                        </span>
+                                    ) : (
+                                        <span className="text-[#22d3ee] text-[15px]">Seleccionar ↕</span>
+                                    )}
+                                </div>
+                            }
+                        />
+
+                        {/* Dosificación */}
+                        <Row
+                            label="Dosificación"
+                            right={
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        value={doseAmount}
+                                        onChange={e => setDoseAmount(e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                        placeholder="0"
+                                        step="any"
+                                        min="0"
+                                        className="bg-transparent text-right w-16 text-white outline-none text-[15px]"
+                                    />
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${cat?.bg || "bg-rose-400/15"} ${cat?.text || "text-rose-300"}`}>
+                                        {doseUnit}
+                                    </span>
+                                    <select
+                                        value={doseUnit}
+                                        onChange={e => setDoseUnit(e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                        className="bg-transparent text-[#0A84FF] text-[13px] outline-none -ml-1"
+                                    >
+                                        {["mcg", "mg", "IU"].map(u => <option key={u} value={u}>{u}</option>)}
+                                    </select>
+                                </div>
+                            }
+                        />
+
+                        {/* Vía */}
+                        <Row
+                            label="Vía"
+                            onPress={() => setShowRoutePicker(true)}
+                            right={<span className="text-[#0A84FF] text-[15px]">{ROUTES.find(r => r.value === route)?.label} ↕</span>}
+                        />
+
+                        {/* Punto de inyección */}
+                        {(route === "subcutaneous" || route === "intramuscular") && (
+                            <Row
+                                label="Punto"
+                                onPress={() => setShowSitePicker(true)}
+                                right={
+                                    <span className="text-[#0A84FF] text-[15px] max-w-[180px] text-right truncate">
+                                        {injectionSite || "Seleccionar"} ↕
+                                    </span>
+                                }
+                            />
+                        )}
+
+                        {/* Nivel de dolor */}
+                        <div className="bg-white/6 px-4 py-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-white text-[15px]">Nivel de dolor</span>
+                                <span className="text-white/60 text-[15px]">{painLevel}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0} max={10} step={1}
+                                value={painLevel}
+                                onChange={e => setPainLevel(Number(e.target.value))}
+                                className="w-full accent-white"
+                            />
+                            <div className="flex justify-between text-[11px] text-white/30 mt-1">
+                                <span>Sin dolor</span>
+                                <span>Máximo</span>
+                            </div>
+                        </div>
+
+                        {/* Dosis típica hint */}
+                        {selectedPeptide?.typical_dose_min && (
+                            <div className="bg-white/3 px-4 py-2.5 border-t border-white/6">
+                                <p className="text-[12px] text-white/30 text-center">
+                                    Rango habitual: {selectedPeptide.typical_dose_min}–{selectedPeptide.typical_dose_max} {selectedPeptide.dose_unit}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Vista previa nivel estimado */}
+                    {selectedPeptide && doseAmount && (
+                        <>
+                            <SectionHeader title="Vista previa nivel estimado" />
+                            <div className="mx-4">
+                                <HalfLifeChart logs={[{
+                                    logged_at: loggedAt.toISOString(),
+                                    dose_amount: parseFloat(doseAmount) || 1,
+                                    dose_unit: doseUnit,
+                                    peptides: { name_es: selectedPeptide.name_es, half_life_hours: selectedPeptide.half_life_hours }
+                                }]} />
+                            </div>
+                        </>
+                    )}
+
+                    {/* NOTAS */}
+                    <SectionHeader title="Notas de dosis" />
+                    <div className="mx-4 rounded-2xl overflow-hidden">
+                        <textarea
+                            value={notes}
+                            onChange={e => setNotes(e.target.value)}
+                            placeholder="Agregar notas"
+                            rows={3}
+                            className="w-full bg-white/6 px-4 py-3 text-[15px] text-white placeholder:text-white/25
+                       outline-none resize-none border-0"
+                        />
+                    </div>
+
+                    <div className="h-12" />
+                </div>
+
+                {/* ── Peptide picker modal ── */}
+                {showPeptidePicker && (
+                    <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowPeptidePicker(false)}>
+                        <div className="w-full bg-[#1C1C1E] rounded-t-3xl max-h-[70vh] overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                                <span className="font-semibold text-white">Medicamento</span>
+                                <button onClick={() => setShowPeptidePicker(false)}
+                                    className="text-[#0A84FF] text-[15px]">Listo</button>
+                            </div>
+                            <div className="overflow-y-auto">
+                                {suggestedPeptides.length > 0 && (
+                                    <>
+                                        <div className="px-5 py-2 text-xs font-semibold text-white/40 uppercase tracking-wider bg-white/5">
+                                            Sugeridos
+                                        </div>
+                                        {suggestedPeptides.map(p => {
+                                            const c = getPeptideCategory(p.tags || []);
+                                            return (
+                                                <button key={p.id} onClick={() => { setSelectedPeptideId(p.id); setShowPeptidePicker(false); }}
+                                                    className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
+                                   ${selectedPeptideId === p.id ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-xl">{c.emoji}</span>
+                                                        <div className="text-left">
+                                                            <div className="text-white text-[15px]">{p.name_es}</div>
+                                                            <div className={`text-[11px] ${c.text}`}>{c.label}</div>
+                                                        </div>
+                                                    </div>
+                                                    {selectedPeptideId === p.id && <span className="text-[#0A84FF] text-lg">✓</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </>
+                                )}
+
+                                <div className="px-5 py-2 text-xs font-semibold text-white/40 uppercase tracking-wider bg-white/5">
+                                    Todos
+                                </div>
+                                {otherPeptides.map(p => {
+                                    const c = getPeptideCategory(p.tags || []);
+                                    return (
+                                        <button key={p.id} onClick={() => { setSelectedPeptideId(p.id); setShowPeptidePicker(false); }}
+                                            className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
+                      ${selectedPeptideId === p.id ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xl">{c.emoji}</span>
+                                                <div className="text-left">
+                                                    <div className="text-white text-[15px]">{p.name_es}</div>
+                                                    <div className={`text-[11px] ${c.text}`}>{c.label}</div>
+                                                </div>
+                                            </div>
+                                            {selectedPeptideId === p.id && <span className="text-[#0A84FF] text-lg">✓</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Injection site picker ── */}
+                {showSitePicker && (
+                    <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowSitePicker(false)}>
+                        <div className="w-full bg-[#1C1C1E] rounded-t-3xl max-h-[60vh] overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                                <span className="font-semibold text-white">Punto de inyección</span>
+                                <button onClick={() => setShowSitePicker(false)} className="text-[#0A84FF] text-[15px]">Listo</button>
+                            </div>
+                            <div className="overflow-y-auto">
+                                {INJECTION_SITES.map(site => (
+                                    <button key={site} onClick={() => { setInjectionSite(site); setShowSitePicker(false); }}
+                                        className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
                     ${injectionSite === site ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
-                                    <span className="text-white text-[15px]">{site}</span>
-                                    {injectionSite === site && <span className="text-[#0A84FF]">✓</span>}
+                                        <span className="text-white text-[15px]">{site}</span>
+                                        {injectionSite === site && <span className="text-[#0A84FF]">✓</span>}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Route picker ── */}
+                {showRoutePicker && (
+                    <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowRoutePicker(false)}>
+                        <div className="w-full bg-[#1C1C1E] rounded-t-3xl overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                                <span className="font-semibold text-white">Vía de administración</span>
+                                <button onClick={() => setShowRoutePicker(false)} className="text-[#0A84FF] text-[15px]">Listo</button>
+                            </div>
+                            {ROUTES.map(r => (
+                                <button key={r.value} onClick={() => { setRoute(r.value); setShowRoutePicker(false); }}
+                                    className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
+                  ${route === r.value ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
+                                    <span className="text-white text-[15px]">{r.label}</span>
+                                    {route === r.value && <span className="text-[#0A84FF]">✓</span>}
                                 </button>
                             ))}
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* ── Route picker ── */}
-            {showRoutePicker && (
-                <div className="absolute inset-0 bg-black/60 z-10 flex items-end" onClick={() => setShowRoutePicker(false)}>
-                    <div className="w-full bg-[#1C1C1E] rounded-t-3xl overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
-                            <span className="font-semibold text-white">Vía de administración</span>
-                            <button onClick={() => setShowRoutePicker(false)} className="text-[#0A84FF] text-[15px]">Listo</button>
-                        </div>
-                        {ROUTES.map(r => (
-                            <button key={r.value} onClick={() => { setRoute(r.value); setShowRoutePicker(false); }}
-                                className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-white/5
-                  ${route === r.value ? "bg-white/5" : ""} hover:bg-white/5 transition-colors`}>
-                                <span className="text-white text-[15px]">{r.label}</span>
-                                {route === r.value && <span className="text-[#0A84FF]">✓</span>}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }
