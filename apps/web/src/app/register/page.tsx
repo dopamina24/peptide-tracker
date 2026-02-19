@@ -80,7 +80,10 @@ export default function RegisterPage() {
                     <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-neon to-brand-electric flex items-center justify-center mb-4 glow-neon">
                         <Activity className="w-8 h-8 text-white" />
                     </div>
-                    <h1 className="text-2xl font-bold text-gradient-neon">Crear cuenta</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">
+                        <span className="text-gradient-brand">Amin</span>
+                        <span className="text-gradient-fx">FX</span>
+                    </h1>
                     <p className="text-white/50 mt-1 text-sm">Empieza tu seguimiento hoy</p>
                 </div>
 

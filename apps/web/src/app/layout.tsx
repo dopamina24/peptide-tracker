@@ -7,15 +7,15 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-    title: "PeptideTracker — Registro de Péptidos",
+    title: "AminFX — Optimización de Péptidos",
     description: "Registra, gestiona y optimiza tus protocolos de péptidos de forma inteligente.",
     manifest: "/manifest.json",
     appleWebApp: {
         capable: true,
         statusBarStyle: "black-translucent",
-        title: "PeptideTracker",
+        title: "AminFX",
     },
-    keywords: ["péptidos", "BPC-157", "TB-500", "semaglutida", "protocolo", "seguimiento"],
+    keywords: ["péptidos", "BPC-157", "TB-500", "semaglutida", "protocolo", "seguimiento", "AminFX"],
 };
 
 export const viewport: Viewport = {

@@ -2,6 +2,29 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
+const TopBar = () => {
+    return (
+        <div className="fixed top-0 inset-x-0 h-14 bg-surface-card/80 backdrop-blur-xl border-b border-surface-border z-40 flex items-center justify-between px-4 max-w-lg mx-auto">
+            <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-electric to-brand-glow flex items-center justify-center">
+                    <div className="w-4 h-4 text-white">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                    </div>
+                </div>
+                <span className="font-bold text-lg tracking-tight">
+                    <span className="text-white">Amin</span>
+                    <span className="text-brand-electric">FX</span>
+                </span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-surface-elevated border border-surface-border flex items-center justify-center">
+                <span className="text-xs font-medium text-white/50">JD</span>
+            </div>
+        </div>
+    );
+};
+
 const TABS = [
     {
         href: "/dashboard",
@@ -66,24 +89,27 @@ const TABS = [
 export function BottomNav() {
     const pathname = usePathname();
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-30
+        <>
+            <TopBar />
+            <nav className="fixed bottom-0 left-0 right-0 z-30
       bg-[#0c1018]/95 backdrop-blur-xl
       border-t border-white/[0.07]
       pb-safe">
-            <div className="flex items-center justify-around px-2 pt-2 pb-1 max-w-lg mx-auto">
-                {TABS.map(tab => {
-                    const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
-                    return (
-                        <Link key={tab.label} href={tab.href}
-                            className="flex flex-col items-center gap-1 py-1 px-2 min-w-[52px] transition-opacity active:opacity-60">
-                            {tab.icon(active)}
-                            <span className={`text-[10px] font-medium tracking-tight ${active ? "text-[#22d3ee]" : "text-white/40"}`}>
-                                {tab.label}
-                            </span>
-                        </Link>
-                    );
-                })}
-            </div>
-        </nav>
+                <div className="flex items-center justify-around px-2 pt-2 pb-1 max-w-lg mx-auto">
+                    {TABS.map(tab => {
+                        const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
+                        return (
+                            <Link key={tab.label} href={tab.href}
+                                className="flex flex-col items-center gap-1 py-1 px-2 min-w-[52px] transition-opacity active:opacity-60">
+                                {tab.icon(active)}
+                                <span className={`text-[10px] font-medium tracking-tight ${active ? "text-[#22d3ee]" : "text-white/40"}`}>
+                                    {tab.label}
+                                </span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            </nav>
+        </>
     );
 }

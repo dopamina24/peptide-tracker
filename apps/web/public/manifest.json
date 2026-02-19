@@ -1,7 +1,7 @@
 {
-    "name": "PeptideTracker",
-    "short_name": "Péptidos",
-    "description": "Registra y gestiona tus protocolos de péptidos",
+    "name": "AminFX",
+    "short_name": "AminFX",
+    "description": "Optimización y seguimiento de protocolos de péptidos",
     "start_url": "/dashboard",
     "display": "standalone",
     "background_color": "#0F1117",
