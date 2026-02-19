@@ -11,38 +11,80 @@ import { DoseLogModal } from "@/components/features/DoseLogModal";
 import { HalfLifeChart } from "@/components/features/HalfLifeChart";
 
 // ── Next dose arc gauge ───────────────────────────────────────────────────────
-function NextDoseArc({ nextDoseDate, intervalDays }: { nextDoseDate: Date | null; intervalDays: number }) {
+// ── Next dose arc gauge ───────────────────────────────────────────────────────
+function NextDoseArc({ nextDoseDate, intervalDays, labelOverride, isOverdue }: { nextDoseDate: Date | null; intervalDays: number; labelOverride?: string | null; isOverdue?: boolean }) {
     if (!nextDoseDate) return null;
     const now = new Date();
-    const hoursLeft = Math.max(0, (nextDoseDate.getTime() - now.getTime()) / 3600000);
-    const totalHours = intervalDays * 24;
-    const pct = Math.max(0, Math.min(1, hoursLeft / totalHours));
 
-    // Semicircle arc (270° sweep, from bottom-left to bottom-right)
+    // If overdue, we just show full bar or specialized look. 
+    // Here we'll stick to logic: if future, calc hours. If past, 0 hours left (so full bar if we invert logic? No, usually empty bar = time up).
+    // Let's say: Empty bar = Time to dose (0 hours left). Full bar = Recently dosed.
+    // So if hoursLeft is small, bar is small (arcEnd near start).
+    // Wait, typical progression: 
+    // At T=0 (dose taken), hoursLeft = 168. Pct = 1. Bar is FULL.
+    // At T=168 (due now), hoursLeft = 0. Pct = 0. Bar is EMPTY.
+    // So if overdue (hoursLeft < 0), Pct = 0. Empty bar. Correct.
+
+    const timeDiff = nextDoseDate.getTime() - now.getTime();
+    const hoursLeft = Math.max(0, timeDiff / 3600000);
+    const totalHours = intervalDays * 24;
+    const pct = totalHours > 0 ? Math.max(0, Math.min(1, hoursLeft / totalHours)) : 0;
+
+    // Colors
+    const isUrgent = pct < 0.1 || isOverdue;
+    const emptyColor = "rgba(255,255,255,0.08)";
+    const fillColor = isUrgent ? "#ef4444" : "url(#arcGrad)"; // Red if urgent/overdue
+
+    // Semicircle arc (270° sweep)
     const R = 80;
     const cx = 100; const cy = 105;
     const startAngle = 135;
     const sweepAngle = 270;
     const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+    // Draw background track
+    // Draw active arc
+    // Start of arc is fixed at startAngle? 
+    // Usually gauges go L->R. Empty at L, Full at R? 
+    // Or Full at L (just dosed) -> Empty at R? 
+    // Let's assume standard gauge: Left=0 (Empty/Due), Right=100 (Full/Fresh).
+    // If we want "Time Left", then Full = max time left. Empty = 0 time left.
+    // So as time passes, bar shrinks from Right to Left.
+    // That means: StartAngle = 135. EndAngle = ?
+    // pct=1 (Full) -> Sweep 270. End = 135+270 = 405.
+    // pct=0 (Empty) -> Sweep 0. End = 135.
+    // So EndAngle = startAngle + sweepAngle * pct.
+
+    const activeSweep = sweepAngle * pct;
+    const endAngle = startAngle + activeSweep;
+
     const arcStart = { x: cx + R * Math.cos(toRad(startAngle)), y: cy + R * Math.sin(toRad(startAngle)) };
-    const endAngle = startAngle + sweepAngle * (1 - pct);
     const arcEnd = { x: cx + R * Math.cos(toRad(endAngle)), y: cy + R * Math.sin(toRad(endAngle)) };
-    const largeArc = sweepAngle * (1 - pct) > 180 ? 1 : 0;
+    const largeArc = activeSweep > 180 ? 1 : 0;
     const arcPath = `M ${arcStart.x} ${arcStart.y} A ${R} ${R} 0 ${largeArc} 1 ${arcEnd.x} ${arcEnd.y}`;
 
     const daysLeft = Math.floor(hoursLeft / 24);
-    const label = daysLeft >= 1 ? `${daysLeft} día${daysLeft !== 1 ? "s" : ""}` : `${Math.round(hoursLeft)}h`;
+
+    // Main Label Logic
+    let mainLabel = "";
+    if (labelOverride) {
+        mainLabel = labelOverride;
+    } else {
+        mainLabel = daysLeft >= 1 ? `${daysLeft} día${daysLeft !== 1 ? "s" : ""}` : `${Math.round(hoursLeft)}h`;
+    }
 
     return (
         <div className="flex flex-col items-center">
             <svg width="200" height="130" viewBox="0 0 200 130">
                 {/* Track */}
                 <path d={`M ${cx + R * Math.cos(toRad(startAngle))} ${cy + R * Math.sin(toRad(startAngle))} A ${R} ${R} 0 1 1 ${cx + R * Math.cos(toRad(startAngle + sweepAngle))} ${cy + R * Math.sin(toRad(startAngle + sweepAngle))}`}
-                    stroke="rgba(255,255,255,0.08)" strokeWidth="12" fill="none" strokeLinecap="round" />
+                    stroke={emptyColor} strokeWidth="12" fill="none" strokeLinecap="round" />
+
                 {/* Filled arc */}
-                {pct < 0.99 && (
-                    <path d={arcPath} stroke="url(#arcGrad)" strokeWidth="12" fill="none" strokeLinecap="round" />
+                {pct > 0.01 && (
+                    <path d={arcPath} stroke={fillColor} strokeWidth="12" fill="none" strokeLinecap="round" />
                 )}
+
                 <defs>
                     <linearGradient id="arcGrad" x1="0" y1="0" x2="1" y2="0">
                         <stop stopColor="#FF3B30" />
@@ -50,8 +92,11 @@ function NextDoseArc({ nextDoseDate, intervalDays }: { nextDoseDate: Date | null
                         <stop offset="1" stopColor="#FFD60A" />
                     </linearGradient>
                 </defs>
+
                 {/* Center text */}
-                <text x={cx} y={cy - 8} textAnchor="middle" fill="white" fontSize="26" fontWeight="700">{label}</text>
+                <text x={cx} y={cy - 8} textAnchor="middle" fill={isUrgent ? "#ef4444" : "white"} fontSize="26" fontWeight="700">
+                    {mainLabel}
+                </text>
                 <text x={cx} y={cy + 14} textAnchor="middle" fill="rgba(255,255,255,0.45)" fontSize="11">para la próxima dosis</text>
                 <text x={cx} y={cy + 30} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10">
                     {format(nextDoseDate, "EEE d 'de' MMM 'a las' HH:mm", { locale: es })}
@@ -95,6 +140,7 @@ export default function DashboardPage() {
     const [wellness, setWellness] = useState<any>(null);
     const supabase = createClient();
     const today = format(new Date(), "yyyy-MM-dd");
+    const today = new Date().toISOString().split("T")[0];
 
     const loadData = async () => {
         setLoading(true);
@@ -130,7 +176,24 @@ export default function DashboardPage() {
 
         // Compute next scheduled dose
         if (protocols?.[0]?.protocol_items?.length) {
-            setNextProtocolItem(protocols[0].protocol_items[0]);
+            const item = protocols[0].protocol_items[0];
+            setNextProtocolItem(item);
+
+            // Allow time for state to settle, but ideally we fetch specific last log here
+            // Fetch the very last log for THIS specific peptide/item to correspond to next dose
+            const { data: lastSpecificLog } = await supabase.from("dose_logs")
+                .select("*")
+                .eq("user_id", user.id)
+                .eq("peptide_id", item.peptide_id)
+                .order("logged_at", { ascending: false })
+                .limit(1)
+                .single();
+
+            if (lastSpecificLog) {
+                // Attach to item temporarily for calculation or state
+                item.last_log_date = lastSpecificLog.logged_at;
+            }
+            setNextProtocolItem({ ...item }); // Force update
         }
         setLoading(false);
     };
@@ -148,26 +211,36 @@ export default function DashboardPage() {
         ? `${lastLog.dose_amount}${lastLog.peptides?.dose_unit || lastLog.dose_unit}`
         : "—";
 
-    // Next dose calculation: find the LAST log for the *specific* peptide in the active protocol
-    const nextDoseDate = nextProtocolItem
+    // Next dose calculation
+    const nextDoseData = nextProtocolItem
         ? (() => {
-            // Find last log specifically for this protocol item's peptide
-            const last = recentLogs.find((l: any) => l.peptide_id === nextProtocolItem.peptide_id);
+            // Use specific last log date if checked, otherwise look in recent logs as fallback
+            const lastDateSrc = nextProtocolItem.last_log_date || recentLogs.find((l: any) => l.peptide_id === nextProtocolItem.peptide_id)?.logged_at;
 
-            // If never logged, start today (or start_date of protocol if available)
-            if (!last) return new Date();
+            if (!lastDateSrc) {
+                // Never logged: "Start now"
+                return { date: new Date(), label: "Iniciar", isOverdue: false };
+            }
 
             const freqDays =
                 nextProtocolItem.frequency_type === "daily" ? 1 :
                     nextProtocolItem.frequency_type === "eod" ? 2 :
-                        nextProtocolItem.frequency_type === "3x_week" ? 2.3 : // approx
+                        nextProtocolItem.frequency_type === "3x_week" ? 2 : // approx 2-3 days
                             nextProtocolItem.frequency_type === "weekly" ? 7 : 7;
 
-            const nextDate = new Date(new Date(last.logged_at).getTime() + freqDays * 86400000);
+            const nextDate = new Date(new Date(lastDateSrc).getTime() + freqDays * 86400000);
+            const now = new Date();
+            const diffHours = (nextDate.getTime() - now.getTime()) / 3600000;
 
-            // If next date is in the past, it means we are overdue, so assume "Now" or "Today"
-            // But let's show the actual due date even if overdue
-            return nextDate;
+            if (diffHours < -24) {
+                // Overdue by more than a day
+                return { date: nextDate, label: "Atrasada", isOverdue: true };
+            } else if (diffHours <= 0) {
+                // Due now or very recently
+                return { date: nextDate, label: "Ahora", isOverdue: true };
+            } else {
+                return { date: nextDate, label: null, isOverdue: false };
+            }
         })()
         : null;
 
@@ -228,12 +301,17 @@ export default function DashboardPage() {
                 )}
 
                 {/* Next dose arc */}
-                {nextDoseDate && (
+                {nextDoseData && (
                     <div>
                         <h2 className="text-white font-bold text-[17px] mb-1">Próxima dosis</h2>
                         <div className="bg-white/5 rounded-3xl pt-2 pb-4 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-                            <NextDoseArc nextDoseDate={nextDoseDate} intervalDays={intervalDays} />
+                            <NextDoseArc
+                                nextDoseDate={nextDoseData.date}
+                                intervalDays={intervalDays}
+                                labelOverride={nextDoseData.label}
+                                isOverdue={nextDoseData.isOverdue}
+                            />
                             {nextProtocolItem && (
                                 <p className="text-center text-white/40 text-[13px] mt-[-10px]">
                                     {nextProtocolItem.peptides?.name_es} · {nextProtocolItem.dose_amount}{nextProtocolItem.dose_unit}
