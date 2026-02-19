@@ -52,13 +52,14 @@ const TABS = [
         ),
     },
     {
-        href: "/protocols",
-        label: "Protocolos",
+        href: "/results",
+        label: "Resultados",
         icon: (active: boolean) => (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                 stroke={active ? "#22d3ee" : "rgba(255,255,255,0.4)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                <path d="M18 20V10" />
+                <path d="M12 20V4" />
+                <path d="M6 20v-6" />
             </svg>
         ),
     },
