@@ -21,6 +21,8 @@ export default function ResultsPage() {
     const [range, setRange] = useState("3M");
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any[]>([]);
+    const [medicationLevels, setMedicationLevels] = useState<any[]>([]);
+    const [activePeptides, setActivePeptides] = useState<any[]>([]);
     const [profile, setProfile] = useState<any>(null);
     const supabase = createClient();
 
@@ -30,7 +32,7 @@ export default function ResultsPage() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            // Load profile for current stats
+            // Load profile
             const { data: userProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
             setProfile(userProfile);
 
@@ -41,26 +43,99 @@ export default function ResultsPage() {
                 .eq("user_id", user.id)
                 .order("logged_date", { ascending: true });
 
-            if (logs) {
-                // Process logs for charts
-                // Filter by range
-                const now = new Date();
-                let filteredLogs = logs;
+            // Load dose logs & peptides for levels calculation
+            const { data: doseLogs } = await supabase
+                .from("dose_logs")
+                .select("*, peptides(*)")
+                .eq("user_id", user.id)
+                .order("logged_at", { ascending: true });
 
-                if (range !== "ALL") {
-                    const months = range === "1M" ? 1 : range === "3M" ? 3 : 6;
-                    const cutoff = subMonths(now, months);
-                    filteredLogs = logs.filter(l => isAfter(parseISO(l.logged_date), cutoff));
-                }
+            const { data: peptides } = await supabase.from("peptides").select("*");
+
+            if (logs) {
+                // Filter logs by range
+                const now = new Date();
+                const months = range === "1M" ? 1 : range === "3M" ? 3 : range === "6M" ? 6 : 120; // 120 months ~ 10 years for ALL
+                const cutoff = subMonths(now, months);
+
+                const filteredLogs = logs.filter(l => range === "ALL" || isAfter(parseISO(l.logged_date), cutoff));
 
                 setData(filteredLogs.map(l => ({
                     date: l.logged_date,
                     weight: l.weight_kg,
                     calories: l.calories || 0,
-                    nausea: l.side_effects_detail?.nausea || 0, // Example side effect
+                    nausea: l.side_effects_detail?.nausea || 0,
                     formattedDate: format(parseISO(l.logged_date), "d MMM", { locale: es }),
                 })));
             }
+
+            if (doseLogs && peptides) {
+                // Calculate simulated levels
+                // 1. Identify active peptides in the logs
+                const uniquePeptideIds = Array.from(new Set(doseLogs.map(l => l.peptide_id)));
+                const relevantPeptides = peptides.filter(p => uniquePeptideIds.includes(p.id));
+                setActivePeptides(relevantPeptides);
+
+                // 2. Simulation range (daily steps from first dose or range cutoff)
+                const now = new Date();
+                const months = range === "1M" ? 1 : range === "3M" ? 3 : range === "6M" ? 6 : 12;
+                const startDate = subMonths(now, months);
+
+                // If "ALL", start from the very first dose, else start from range cutoff
+                const simulationStart = range === "ALL" && doseLogs.length > 0
+                    ? new Date(doseLogs[0].logged_at)
+                    : startDate;
+
+                const simulationEnd = now;
+                const daysToSimulate = Math.ceil((simulationEnd.getTime() - simulationStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                const levelsData = [];
+                // Current levels for each peptide
+                const currentLevels: Record<string, number> = {};
+                relevantPeptides.forEach(p => currentLevels[p.id] = 0);
+
+                // Group doses by date (YYYY-MM-DD)
+                const dosesByDate: Record<string, any[]> = {};
+                doseLogs.forEach(log => {
+                    const day = log.logged_at.split("T")[0];
+                    if (!dosesByDate[day]) dosesByDate[day] = [];
+                    dosesByDate[day].push(log);
+                });
+
+                for (let i = 0; i < daysToSimulate; i++) {
+                    const currentDate = new Date(simulationStart.getTime() + i * (1000 * 60 * 60 * 24));
+                    const dateStr = currentDate.toISOString().split("T")[0];
+
+                    const dailyData: any = {
+                        date: dateStr,
+                        formattedDate: format(currentDate, "d MMM", { locale: es })
+                    };
+
+                    relevantPeptides.forEach(p => {
+                        // Decay from previous day: Amount(t) = Amount(t-1) * (0.5 ^ (24 / HalfLife))
+                        const halfLife = p.half_life_hours || 24; // Default to 24h if missing
+                        const decayFactor = Math.pow(0.5, 24 / halfLife);
+
+                        let level = (currentLevels[p.id] || 0) * decayFactor;
+
+                        // Add new doses for this day
+                        const daysDoses = dosesByDate[dateStr]?.filter(d => d.peptide_id === p.id) || [];
+                        daysDoses.forEach(d => {
+                            // Assuming dose_amount is in same units (e.g. mg or mcg). 
+                            // If mixing units, normalization is needed. visualizing raw numbers for now.
+                            level += Number(d.dose_amount);
+                        });
+
+                        currentLevels[p.id] = level;
+                        dailyData[p.name_es] = Number(level.toFixed(2)); // Store by name for the chart line
+                        // Also store a normalized value if needed, but let's use raw for now
+                    });
+
+                    levelsData.push(dailyData);
+                }
+                setMedicationLevels(levelsData);
+            }
+
             setLoading(false);
         };
 
@@ -108,6 +183,8 @@ export default function ResultsPage() {
 
         doc.save("aminfx-reporte.pdf");
     };
+
+    const COLORS = ["#22d3ee", "#818cf8", "#f472b6", "#34d399", "#fbbf24"];
 
     return (
         <div className="space-y-6 pb-20">
@@ -162,6 +239,56 @@ export default function ResultsPage() {
                     </div>
                 </div>
             )}
+
+            {/* Medication Levels Chart */}
+            <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                    <Activity className="w-4 h-4 text-brand-neon" />
+                    <h3 className="text-sm font-semibold tracking-wide uppercase text-white/70">Niveles Estimados (Sangre)</h3>
+                </div>
+                <div className="glass-card p-4 h-64 w-full">
+                    {medicationLevels.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={medicationLevels}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                <XAxis
+                                    dataKey="formattedDate"
+                                    stroke="rgba(255,255,255,0.3)"
+                                    tick={{ fontSize: 10 }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    minTickGap={30}
+                                />
+                                <YAxis
+                                    stroke="rgba(255,255,255,0.3)"
+                                    tick={{ fontSize: 10 }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    width={30}
+                                />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: "#0e1520", borderColor: "rgba(255,255,255,0.1)", borderRadius: "12px" }}
+                                    itemStyle={{ color: "#fff" }}
+                                />
+                                {activePeptides.map((p, idx) => (
+                                    <Line
+                                        key={p.id}
+                                        type="monotone"
+                                        dataKey={p.name_es}
+                                        stroke={COLORS[idx % COLORS.length]}
+                                        strokeWidth={2}
+                                        dot={false}
+                                    />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="h-full flex items-center justify-center text-white/30 text-xs text-center">
+                            No hay dosis registradas para calcular niveles.
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Weight Chart */}
             <div className="space-y-3">
