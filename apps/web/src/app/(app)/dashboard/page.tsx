@@ -5,6 +5,8 @@ import { format, differenceInHours, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 import { Plus, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
+import { WellnessModal } from "@/components/features/WellnessModal";
 import { DoseLogModal } from "@/components/features/DoseLogModal";
 import { HalfLifeChart } from "@/components/features/HalfLifeChart";
 
@@ -88,6 +90,7 @@ export default function DashboardPage() {
     const [recentLogs, setRecentLogs] = useState<any[]>([]);
     const [nextProtocolItem, setNextProtocolItem] = useState<any>(null);
     const [showLogModal, setShowLogModal] = useState(false);
+    const [showWellnessModal, setShowWellnessModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [wellness, setWellness] = useState<any>(null);
     const supabase = createClient();
@@ -114,7 +117,7 @@ export default function DashboardPage() {
             supabase.from("dose_logs").select("*, peptides(name_es, half_life_hours, dose_unit)")
                 .eq("user_id", user.id)
                 .order("logged_at", { ascending: false })
-                .limit(10),
+                .limit(20),
             supabase.from("protocols").select("*, protocol_items(*, peptides(name_es))")
                 .eq("user_id", user.id).eq("is_active", true).limit(1),
             supabase.from("wellness_logs").select("*").eq("user_id", user.id).eq("logged_date", today).single(),
@@ -145,16 +148,26 @@ export default function DashboardPage() {
         ? `${lastLog.dose_amount}${lastLog.peptides?.dose_unit || lastLog.dose_unit}`
         : "—";
 
-    // Next dose: rough calc — find last log for protocol item, add frequency interval
+    // Next dose calculation: find the LAST log for the *specific* peptide in the active protocol
     const nextDoseDate = nextProtocolItem
         ? (() => {
-            const last = recentLogs.find((l: any) => l.protocol_item_id === nextProtocolItem.id);
+            // Find last log specifically for this protocol item's peptide
+            const last = recentLogs.find((l: any) => l.peptide_id === nextProtocolItem.peptide_id);
+
+            // If never logged, start today (or start_date of protocol if available)
             if (!last) return new Date();
+
             const freqDays =
                 nextProtocolItem.frequency_type === "daily" ? 1 :
                     nextProtocolItem.frequency_type === "eod" ? 2 :
-                        nextProtocolItem.frequency_type === "weekly" ? 7 : 7;
-            return new Date(new Date(last.logged_at).getTime() + freqDays * 86400000);
+                        nextProtocolItem.frequency_type === "3x_week" ? 2.3 : // approx
+                            nextProtocolItem.frequency_type === "weekly" ? 7 : 7;
+
+            const nextDate = new Date(new Date(last.logged_at).getTime() + freqDays * 86400000);
+
+            // If next date is in the past, it means we are overdue, so assume "Now" or "Today"
+            // But let's show the actual due date even if overdue
+            return nextDate;
         })()
         : null;
 
@@ -163,20 +176,20 @@ export default function DashboardPage() {
             nextProtocolItem?.frequency_type === "eod" ? 2 :
                 nextProtocolItem?.frequency_type === "weekly" ? 7 : 7;
 
-    const weightKg = profile?.weight_kg;
+    const weightKg = wellness?.weight_kg || profile?.weight_kg;
 
     return (
         <div className="bg-[#111113] min-h-full">
             {/* iOS-style nav bar */}
-            <div className="flex items-center justify-between px-4 pt-14 pb-3">
-                <button className="text-white/50 p-1">
-                    <svg width="20" height="14" viewBox="0 0 20 14" fill="none">
-                        <rect y="0" width="20" height="2" rx="1" fill="currentColor" />
-                        <rect y="6" width="20" height="2" rx="1" fill="currentColor" />
-                        <rect y="12" width="20" height="2" rx="1" fill="currentColor" />
+            <div className="relative flex items-center justify-between px-4 pt-14 pb-3">
+                <Link href="/profile" className="text-white/50 p-1 hover:text-white transition-colors">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
                     </svg>
-                </button>
-                <span className="text-white font-semibold text-[17px]">Resumen</span>
+                </Link>
+                <span className="absolute left-1/2 -translate-x-1/2 text-white font-semibold text-[17px]">Resumen</span>
                 <button onClick={() => setShowLogModal(true)}
                     className="text-[#0A84FF] text-[15px] font-medium flex items-center gap-1">
                     <Plus className="w-4 h-4" /> Agr. dosis
@@ -185,17 +198,19 @@ export default function DashboardPage() {
 
             <div className="px-4 space-y-6 pb-28">
                 {/* Greeting */}
-                <p className="text-white/40 text-[14px]">
-                    {greeting}, <span className="text-white font-semibold">{userName}</span> 👋
-                </p>
+                {profile && (
+                    <p className="text-white/40 text-[14px]">
+                        {greeting}, <span className="text-white font-semibold">{userName}</span> 👋
+                    </p>
+                )}
 
                 {/* Stats row */}
                 <div>
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="text-white font-bold text-[17px]">Historial de dosis</h2>
-                        <button className="text-[#0A84FF] text-[14px] flex items-center gap-0.5">
+                        <Link href="/history" className="text-[#0A84FF] text-[14px] flex items-center gap-0.5">
                             Ver todos <ChevronRight className="w-4 h-4" />
-                        </button>
+                        </Link>
                     </div>
                     <div className="flex gap-2.5">
                         <StatCard icon="💉" label="Dosis apl." value={String(totalDoses)} />
@@ -216,10 +231,11 @@ export default function DashboardPage() {
                 {nextDoseDate && (
                     <div>
                         <h2 className="text-white font-bold text-[17px] mb-1">Próxima dosis</h2>
-                        <div className="bg-white/5 rounded-3xl pt-2 pb-4">
+                        <div className="bg-white/5 rounded-3xl pt-2 pb-4 relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
                             <NextDoseArc nextDoseDate={nextDoseDate} intervalDays={intervalDays} />
                             {nextProtocolItem && (
-                                <p className="text-center text-white/40 text-[13px]">
+                                <p className="text-center text-white/40 text-[13px] mt-[-10px]">
                                     {nextProtocolItem.peptides?.name_es} · {nextProtocolItem.dose_amount}{nextProtocolItem.dose_unit}
                                 </p>
                             )}
@@ -233,24 +249,33 @@ export default function DashboardPage() {
                         Hoy, {format(new Date(), "d MMMM", { locale: es })}
                     </h2>
                     <div className="grid grid-cols-3 gap-2.5 mb-2.5">
-                        <WellnessCard icon="⚖️" label="Peso" value={wellness?.weight_kg ? `${wellness.weight_kg}kg` : "—"} />
-                        <WellnessCard icon="🔥" label="Calorías" value="—" />
-                        <WellnessCard icon="🥩" label="Proteína" value="—" />
+                        <WellnessCard
+                            icon="⚖️"
+                            label="Peso"
+                            value={weightKg ? `${weightKg}kg` : "—"}
+                            onTap={() => setShowWellnessModal(true)}
+                        />
+                        <WellnessCard
+                            icon="🔥"
+                            label="Calorías"
+                            value={wellness?.calories ? `${wellness.calories}` : "—"}
+                            onTap={() => setShowWellnessModal(true)}
+                        />
+                        <WellnessCard
+                            icon="📝"
+                            label="Notas"
+                            value={wellness?.notes ? "Sí" : "—"}
+                            onTap={() => setShowWellnessModal(true)}
+                        />
                     </div>
                     <div className="space-y-2">
-                        <button className="w-full bg-white/6 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-white/9 transition-colors text-left">
+                        <button onClick={() => setShowWellnessModal(true)} className="w-full bg-white/6 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-white/9 transition-colors text-left">
                             <span className="text-lg">🤒</span>
                             <div>
-                                <div className="text-white text-[14px] font-medium">Efectos secundarios</div>
-                                <div className="text-white/35 text-[12px]">Toque para agregar efectos</div>
+                                <div className="text-white text-[14px] font-medium">Registro Diario</div>
+                                <div className="text-white/35 text-[12px]">Toque para agregar síntomas o notas</div>
                             </div>
-                        </button>
-                        <button className="w-full bg-white/6 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-white/9 transition-colors text-left">
-                            <span className="text-lg">📝</span>
-                            <div>
-                                <div className="text-white text-[14px] font-medium">Notas del día</div>
-                                <div className="text-white/35 text-[12px]">Toque para agregar notas</div>
-                            </div>
+                            <ChevronRight className="w-4 h-4 text-white/20 ml-auto" />
                         </button>
                     </div>
                 </div>
@@ -259,27 +284,33 @@ export default function DashboardPage() {
                 <div>
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="text-white font-bold text-[17px]">Resultados</h2>
-                        <button className="text-[#0A84FF] text-[14px] flex items-center gap-0.5">
+                        <Link href="/results" className="text-[#0A84FF] text-[14px] flex items-center gap-0.5">
                             Ver gráfico <ChevronRight className="w-4 h-4" />
-                        </button>
+                        </Link>
                     </div>
                     <div className="grid grid-cols-3 gap-2.5">
                         <WellnessCard icon="⚖️" label="Cambio total" value="0kg" />
                         <WellnessCard icon="🧮" label="IMC actual"
                             value={weightKg && profile?.age ? String(Math.round(weightKg / Math.pow(1.70, 2) * 10) / 10) : "—"} />
-                        <WellnessCard icon="📊" label="Peso" value={weightKg ? `${weightKg}kg` : "—"} />
-                        <WellnessCard icon="%" label="Porcentaje" value="0%" />
-                        <WellnessCard icon="📅" label="Prom. sem." value="—" />
-                        <WellnessCard icon="🏁" label="A meta" value="—" />
+                        <WellnessCard icon="📊" label="Meta" value={profile?.target_weight_kg ? `${profile.target_weight_kg}kg` : "—"} />
                     </div>
                 </div>
             </div>
 
-            {/* Dose log modal (full screen iOS) */}
+            {/* Dose log modal */}
             {showLogModal && (
                 <DoseLogModal
                     onClose={() => setShowLogModal(false)}
                     onSuccess={() => { setShowLogModal(false); loadData(); toast.success("¡Dosis registrada! 💉"); }}
+                />
+            )}
+
+            {/* Wellness modal */}
+            {showWellnessModal && (
+                <WellnessModal
+                    initialData={wellness}
+                    onClose={() => setShowWellnessModal(false)}
+                    onSuccess={() => { setShowWellnessModal(false); loadData(); toast.success("¡Registro guardado! 📝"); }}
                 />
             )}
         </div>

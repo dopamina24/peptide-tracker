@@ -413,19 +413,18 @@ export function DoseLogModal({ preselectedDose, onClose, onSuccess }: Props) {
                     {/* FECHA */}
                     <SectionHeader title="Fecha" />
                     <div className="mx-4 rounded-2xl overflow-hidden">
-                        <div className="bg-white/6 flex items-center justify-between px-4 py-3 relative">
-                            <label className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                                <input
-                                    type="date"
-                                    value={format(selectedDate, "yyyy-MM-dd")}
-                                    onChange={(e) => setSelectedDate(parseISO(e.target.value))}
-                                    className="w-full h-full"
-                                />
-                            </label>
+                        <div className="bg-white/6 px-4 py-3 relative flex items-center justify-between">
+                            {/* Native date input covering everything for max touch target */}
+                            <input
+                                type="date"
+                                value={format(selectedDate, "yyyy-MM-dd")}
+                                onChange={(e) => setSelectedDate(parseISO(e.target.value))}
+                                className="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer"
+                            />
                             <span className="text-white text-[15px]">Fecha de registro</span>
                             <div className="flex items-center gap-2">
                                 <span className="text-[#0A84FF] font-medium text-[15px]">
-                                    {format(selectedDate, "d MMMM yyyy", { locale: es })}
+                                    {format(selectedDate, "d MMMM yyyy", { locale: es })} 📅
                                 </span>
                             </div>
                         </div>
