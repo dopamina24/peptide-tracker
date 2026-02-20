@@ -145,19 +145,27 @@ export default function ResultsPage() {
     // Calculate stats
     const stats = useMemo(() => {
         if (!data.length || !profile) return null;
-        const first = data[0];
         const last = data[data.length - 1];
-        const totalChange = last.weight - first.weight;
-        const percentChange = (totalChange / first.weight) * 100;
-        const weeks = Math.max(1, (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24 * 7));
-        const weeklyAvg = totalChange / weeks;
 
-        // BMI = weight (kg) / height (m)^2 -- assuming height is stored or we just show weight for now if height missing
-        // For now let's just show dynamic weight stats
+        // Baseline: Profile starting weight if available, else first log in 'ALL' history (which we might not have full access to if range is filtered? 
+        // Actually 'data' is filteredLogs. 
+        // But for "Total Change", we ideally want All Time change. 
+        // Let's assume profile.starting_weight_kg is the absolute truth for "Start".
+
+        const startWeight = profile.starting_weight_kg || data[0].weight;
+        const totalChange = last.weight - startWeight;
+        const percentChange = (totalChange / startWeight) * 100;
+
+        // Weekly average should probably be based on the selected range trends
+        const firstVisible = data[0];
+        const visibleWeeks = Math.max(1, (new Date(last.date).getTime() - new Date(firstVisible.date).getTime()) / (1000 * 60 * 60 * 24 * 7));
+        const weeklyAvg = (last.weight - firstVisible.weight) / visibleWeeks;
+
         return {
             totalChange: totalChange.toFixed(1),
             percentChange: percentChange.toFixed(1),
             currentWeight: last.weight,
+            startWeight: startWeight,
             weeklyAvg: weeklyAvg.toFixed(1),
         };
     }, [data, profile]);
@@ -170,7 +178,7 @@ export default function ResultsPage() {
         doc.text(`Generado el ${format(new Date(), "PP", { locale: es })}`, 14, 30);
 
         if (stats) {
-            doc.text(`Peso Inicial: ${data[0].weight}kg`, 14, 40);
+            doc.text(`Peso Inicial: ${stats.startWeight}kg`, 14, 40);
             doc.text(`Peso Actual: ${stats.currentWeight}kg`, 14, 46);
             doc.text(`Cambio Total: ${stats.totalChange}kg (${stats.percentChange}%)`, 14, 52);
         }

@@ -139,7 +139,6 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [wellness, setWellness] = useState<any>(null);
     const supabase = createClient();
-    const today = format(new Date(), "yyyy-MM-dd");
     const today = new Date().toISOString().split("T")[0];
 
     const loadData = async () => {
