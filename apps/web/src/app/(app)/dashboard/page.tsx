@@ -129,24 +129,7 @@ function WellnessCard({ icon, label, value, onTap }: { icon: string; label: stri
     );
 }
 
-const PEPTIDE_DEFAULTS: Record<string, string> = {
-    "retatrutide": "weekly", "retatrutida": "weekly",
-    "tirzepatide": "weekly", "tirzepatida": "weekly",
-    "semaglutide": "weekly", "semaglutida": "weekly",
-    "bpc-157": "daily",
-    "tb-500": "daily",
-    "ipamorelin": "daily",
-    "cjc-1295": "daily",
-};
-
-function getFrequencyDays(freq: string) {
-    if (freq === "daily") return 1;
-    if (freq === "eod") return 2;
-    if (freq === "3x_week") return 2.33;
-    if (freq === "weekly") return 7;
-    if (freq === "monthly") return 30;
-    return 1;
-}
+import { PEPTIDE_DEFAULTS, getFrequencyDays } from "@/lib/constants/peptides";
 
 export default function DashboardPage() {
     const [profile, setProfile] = useState<any>(null);
