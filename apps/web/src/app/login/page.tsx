@@ -141,7 +141,7 @@ export default function LoginPage() {
                     </div>
 
                     {/* Social buttons */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3">
                         <button
                             onClick={() => handleOAuth("google")}
                             disabled={!!socialLoading}
@@ -151,15 +151,7 @@ export default function LoginPage() {
                                 ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                 : <><GoogleIcon /> Google</>}
                         </button>
-                        <button
-                            onClick={() => handleOAuth("apple")}
-                            disabled={!!socialLoading}
-                            className="btn-ghost flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {socialLoading === "apple"
-                                ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                : <><AppleIcon /> Apple</>}
-                        </button>
+
                     </div>
 
                     <p className="text-center text-sm text-white/50">

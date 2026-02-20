@@ -18,9 +18,7 @@ const TopBar = () => {
                     <span className="text-brand-electric">FX</span>
                 </span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-surface-elevated border border-surface-border flex items-center justify-center">
-                <span className="text-xs font-medium text-white/50">JD</span>
-            </div>
+
         </div>
     );
 };

@@ -366,7 +366,11 @@ export default function DashboardPage() {
                         </Link>
                     </div>
                     <div className="grid grid-cols-3 gap-2.5">
-                        <WellnessCard icon="⚖️" label="Cambio total" value="0kg" />
+                        <WellnessCard icon="⚖️" label="Cambio total"
+                            value={weightKg && profile?.starting_weight_kg
+                                ? `${(weightKg - profile.starting_weight_kg > 0 ? "+" : "")}${(weightKg - profile.starting_weight_kg).toFixed(1)}kg`
+                                : "—"}
+                        />
                         <WellnessCard icon="🧮" label="IMC actual"
                             value={weightKg && profile?.age ? String(Math.round(weightKg / Math.pow(1.70, 2) * 10) / 10) : "—"} />
                         <WellnessCard icon="📊" label="Meta" value={profile?.target_weight_kg ? `${profile.target_weight_kg}kg` : "—"} />
