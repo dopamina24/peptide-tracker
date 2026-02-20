@@ -6,18 +6,30 @@ import { toast } from "sonner";
 import { Target, Zap, Shield, TrendingDown, Brain, Dumbbell, ChevronRight, ChevronLeft, Check } from "lucide-react";
 
 const GOALS = [
-    { id: "fitness", label: "Fitness & Rendimiento", icon: Dumbbell, color: "blue" },
-    { id: "longevity", label: "Longevidad", icon: Shield, color: "green" },
-    { id: "fat_loss", label: "Pérdida de Grasa", icon: TrendingDown, color: "orange" },
-    { id: "recovery", label: "Recuperación", icon: Zap, color: "yellow" },
-    { id: "cognitive", label: "Función Cognitiva", icon: Brain, color: "purple" },
-    { id: "general", label: "Bienestar General", icon: Target, color: "pink" },
+    { id: "fitness", label: "Fitness & Rendimiento", icon: Dumbbell },
+    { id: "longevity", label: "Longevidad", icon: Shield },
+    { id: "fat_loss", label: "Pérdida de Grasa", icon: TrendingDown },
+    { id: "recovery", label: "Recuperación", icon: Zap },
+    { id: "cognitive", label: "Función Cognitiva", icon: Brain },
+    { id: "general", label: "Bienestar General", icon: Target },
 ];
 
 const EXPERIENCE = [
-    { id: "beginner", label: "Principiante", desc: "Es mi primera vez con péptidos" },
-    { id: "intermediate", label: "Intermedio", desc: "He usado péptidos antes" },
-    { id: "advanced", label: "Avanzado", desc: "Experiencia extensa con péptidos" },
+    {
+        id: "beginner",
+        label: "Principiante",
+        desc: "Primera vez. Necesito ayuda con cálculos, reconstitución y dosis básicas."
+    },
+    {
+        id: "intermediate",
+        label: "Intermedio",
+        desc: "Entiendo cómo reconstituir y medir unidades, pero busco seguimiento."
+    },
+    {
+        id: "advanced",
+        label: "Avanzado",
+        desc: "Conozco protocolos complejos, stacks y ajustes precisos de dosis."
+    },
 ];
 
 export default function OnboardingPage() {
@@ -48,18 +60,25 @@ export default function OnboardingPage() {
                 user.user_metadata?.display_name ||
                 null;
 
-            await supabase.from("profiles").upsert({
+            const { error } = await supabase.from("profiles").upsert({
                 id: user.id,
-                username: metaName,        // set on first save; keep existing if user edited it later
+                username: metaName,
                 goals: selectedGoals,
                 experience_level: experience,
                 weight_kg: weight ? parseFloat(weight) : null,
+                starting_weight_kg: weight ? parseFloat(weight) : null, // Set starting weight too!
                 age: age ? parseInt(age) : null,
                 sex: sex || null,
                 preferred_locale: "es",
-                dark_mode: true,
                 updated_at: new Date().toISOString(),
             }, { onConflict: "id", ignoreDuplicates: false });
+
+            if (error) {
+                console.error("Error saving profile:", error);
+                toast.error("Hubo un error al guardar tu perfil.");
+                setLoading(false);
+                return;
+            }
         }
         toast.success("¡Perfil configurado! Bienvenido a PeptideTracker 🧬");
         router.push("/dashboard");
@@ -84,7 +103,7 @@ export default function OnboardingPage() {
                     <div className="space-y-6 animate-slide-up">
                         <div>
                             <h2 className="text-2xl font-bold">¿Cuáles son tus objetivos?</h2>
-                            <p className="text-white/50 mt-1">Selecciona todos los que apliquen</p>
+                            <p className="text-white/50 mt-1">Esto nos ayuda a sugerirte protocolos relevantes.</p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             {GOALS.map(({ id, label, icon: Icon }) => (
@@ -111,7 +130,7 @@ export default function OnboardingPage() {
                     <div className="space-y-6 animate-slide-up">
                         <div>
                             <h2 className="text-2xl font-bold">Tu experiencia</h2>
-                            <p className="text-white/50 mt-1">¿Cuánto sabes sobre péptidos?</p>
+                            <p className="text-white/50 mt-1">Para adaptar el lenguaje y las recomendaciones.</p>
                         </div>
                         <div className="space-y-3">
                             {EXPERIENCE.map(({ id, label, desc }) => (
@@ -123,8 +142,8 @@ export default function OnboardingPage() {
                                         {experience === id && <div className="w-2.5 h-2.5 rounded-full bg-brand-electric" />}
                                     </div>
                                     <div className="text-left">
-                                        <div className="font-medium">{label}</div>
-                                        <div className="text-sm text-white/50">{desc}</div>
+                                        <div className="font-medium text-white">{label}</div>
+                                        <div className="text-sm text-white/50 leading-snug">{desc}</div>
                                     </div>
                                 </button>
                             ))}
@@ -151,12 +170,12 @@ export default function OnboardingPage() {
                                 <div>
                                     <label className="text-sm font-medium text-white/70 block mb-1.5">Peso (kg)</label>
                                     <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
-                                        className="input-field" placeholder="75" min="30" max="300" />
+                                        className="input-field" placeholder="Ej. 75" min="30" max="300" />
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-white/70 block mb-1.5">Edad</label>
                                     <input type="number" value={age} onChange={e => setAge(e.target.value)}
-                                        className="input-field" placeholder="35" min="18" max="100" />
+                                        className="input-field" placeholder="Ei. 35" min="18" max="100" />
                                 </div>
                             </div>
                             <div>
@@ -179,7 +198,7 @@ export default function OnboardingPage() {
                             </button>
                             <button onClick={handleFinish} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
                                 {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (
-                                    <><span>¡Empezar!</span> <Zap className="w-4 h-4" /></>
+                                    <><span>Finalizar</span> <Zap className="w-4 h-4" /></>
                                 )}
                             </button>
                         </div>
