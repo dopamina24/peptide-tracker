@@ -174,25 +174,40 @@ export default function DashboardPage() {
         setWellness(wellnessData);
 
         // Compute next scheduled dose
-        if (protocols?.[0]?.protocol_items?.length) {
-            const item = protocols[0].protocol_items[0];
-            setNextProtocolItem(item);
+        let currentItem = protocols?.[0]?.protocol_items?.[0] || null;
 
-            // Allow time for state to settle, but ideally we fetch specific last log here
-            // Fetch the very last log for THIS specific peptide/item to correspond to next dose
-            const { data: lastSpecificLog } = await supabase.from("dose_logs")
-                .select("*")
-                .eq("user_id", user.id)
-                .eq("peptide_id", item.peptide_id)
-                .order("logged_at", { ascending: false })
-                .limit(1)
-                .single();
+        // Fallback: If no protocol, use the most recent log
+        if (!currentItem && recentLogs.length > 0) {
+            const last = recentLogs[0];
+            currentItem = {
+                peptide_id: last.peptide_id,
+                dose_amount: last.dose_amount,
+                dose_unit: last.dose_unit,
+                frequency_type: "daily", // Default assumption for visualization
+                peptides: last.peptides,
+                last_log_date: last.logged_at,
+                is_fallback: true
+            };
+        }
 
-            if (lastSpecificLog) {
-                // Attach to item temporarily for calculation or state
-                item.last_log_date = lastSpecificLog.logged_at;
+        if (currentItem) {
+            setNextProtocolItem(currentItem);
+
+            // If it's a real protocol item (not fallback with date already set), fetch last log
+            if (!currentItem.is_fallback) {
+                const { data: lastSpecificLog } = await supabase.from("dose_logs")
+                    .select("*")
+                    .eq("user_id", user.id)
+                    .eq("peptide_id", currentItem.peptide_id)
+                    .order("logged_at", { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (lastSpecificLog) {
+                    currentItem.last_log_date = lastSpecificLog.logged_at;
+                }
             }
-            setNextProtocolItem({ ...item }); // Force update
+            setNextProtocolItem({ ...currentItem });
         }
         setLoading(false);
     };

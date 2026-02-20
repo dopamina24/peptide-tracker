@@ -63,7 +63,16 @@ export function HalfLifeChart({ logs }: Props) {
         byPeptide[name].push(log);
     }
 
-    // Find global max concentration for scaling
+    // Normalize to mg
+    const norm = (amount: number, unit: string) => {
+        const u = unit.toLowerCase();
+        if (u === "mcg" || u === "µg") return amount / 1000;
+        if (u === "mg") return amount;
+        if (u === "g") return amount * 1000;
+        return amount; // Fallback (IU etc)
+    };
+
+    // Find global max concentration for scaling (in mg)
     let globalMax = 0;
     for (const [name, entries] of Object.entries(byPeptide)) {
         if (!visiblePeptides.has(name)) continue;
@@ -74,7 +83,7 @@ export function HalfLifeChart({ logs }: Props) {
                 const dt = (t - new Date(e.logged_at).getTime()) / 3600000;
                 if (dt < 0) continue;
                 const hl = e.peptides?.half_life_hours || 4;
-                c += e.dose_amount * Math.exp((-Math.LN2 / hl) * dt);
+                c += norm(e.dose_amount, e.dose_unit) * Math.exp((-Math.LN2 / hl) * dt);
             }
             if (c > globalMax) globalMax = c;
         }
@@ -94,7 +103,7 @@ export function HalfLifeChart({ logs }: Props) {
                 const dt = (t - new Date(e.logged_at).getTime()) / 3600000;
                 if (dt < 0) continue;
                 const hl = e.peptides?.half_life_hours || 4;
-                c += e.dose_amount * Math.exp((-Math.LN2 / hl) * dt);
+                c += norm(e.dose_amount, e.dose_unit) * Math.exp((-Math.LN2 / hl) * dt);
             }
             if (c > peakVal) { peakVal = c; peakStep = i; }
             const x = PAD_L + (i / STEPS) * CHART_W;
@@ -123,10 +132,10 @@ export function HalfLifeChart({ logs }: Props) {
     // Y-axis: 4 ticks — show as % of peak or actual value
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => ({
         y: PAD_T + CHART_H - pct * CHART_H,
-        label: pct === 0 ? "0" : `${Math.round(pct * globalMax)} `,
+        label: pct === 0 ? "0" : `${(pct * globalMax).toFixed(2)} `,
     }));
-    // Use unit from first log
-    const unit = logs[0]?.dose_unit || "mcg";
+    // Use mg as standard unit
+    const unit = "mg";
 
     return (
         <div className="glass-card p-4 space-y-3">
@@ -248,7 +257,7 @@ export function HalfLifeChart({ logs }: Props) {
                             <g key={`peak-${name}`}>
                                 <circle cx={peakX} cy={peakY} r={3} fill={color} />
                                 <text x={peakX} y={peakY - 7} textAnchor="middle" fill={color} fontSize="8" fontWeight="600">
-                                    {Math.round(peakVal)}{unit}
+                                    {peakVal < 1 ? peakVal.toFixed(2) : Math.round(peakVal)}{unit}
                                 </text>
                             </g>
                         );
