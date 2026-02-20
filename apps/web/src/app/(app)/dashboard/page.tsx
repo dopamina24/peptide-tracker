@@ -203,10 +203,30 @@ export default function DashboardPage() {
                 if (seenPeptides.has(log.peptide_id)) continue;
 
                 // Identify freq
-                let freq = "daily"; // default
+                let freq = "daily"; // default fallback
                 const name = log.peptides?.name_es?.toLowerCase() || "";
+                let foundDefault = false;
+
+                // 1. Try defaults map
                 for (const [k, v] of Object.entries(PEPTIDE_DEFAULTS)) {
-                    if (name.includes(k)) { freq = v; break; }
+                    if (name.includes(k)) { freq = v; foundDefault = true; break; }
+                }
+
+                // 2. If unknown, infer from user history (Auto-Learning)
+                if (!foundDefault) {
+                    const peptideLogs = recentData.filter((l: any) => l.peptide_id === log.peptide_id);
+                    if (peptideLogs.length >= 2) {
+                        // Calculate gap between latest two logs
+                        const last = new Date(peptideLogs[0].logged_at).getTime();
+                        const prev = new Date(peptideLogs[1].logged_at).getTime();
+                        const diffDays = Math.abs((last - prev) / (1000 * 3600 * 24));
+
+                        if (diffDays >= 25) freq = "monthly";
+                        else if (diffDays >= 6) freq = "weekly"; // 6+ days -> Weekly
+                        else if (diffDays >= 3) freq = "biweekly"; // 3-5 days -> Biweekly
+                        else if (diffDays >= 1.8) freq = "eod"; // ~2 days -> EOD
+                        else freq = "daily";
+                    }
                 }
 
                 doses.push({
