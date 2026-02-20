@@ -129,11 +129,30 @@ function WellnessCard({ icon, label, value, onTap }: { icon: string; label: stri
     );
 }
 
+const PEPTIDE_DEFAULTS: Record<string, string> = {
+    "retatrutide": "weekly", "retatrutida": "weekly",
+    "tirzepatide": "weekly", "tirzepatida": "weekly",
+    "semaglutide": "weekly", "semaglutida": "weekly",
+    "bpc-157": "daily",
+    "tb-500": "daily",
+    "ipamorelin": "daily",
+    "cjc-1295": "daily",
+};
+
+function getFrequencyDays(freq: string) {
+    if (freq === "daily") return 1;
+    if (freq === "eod") return 2;
+    if (freq === "3x_week") return 2.33;
+    if (freq === "weekly") return 7;
+    if (freq === "monthly") return 30;
+    return 1;
+}
+
 export default function DashboardPage() {
     const [profile, setProfile] = useState<any>(null);
     const [todayLogs, setTodayLogs] = useState<any[]>([]);
     const [recentLogs, setRecentLogs] = useState<any[]>([]);
-    const [nextProtocolItem, setNextProtocolItem] = useState<any>(null);
+    const [nextDoses, setNextDoses] = useState<any[]>([]); // Array of next doses
     const [showLogModal, setShowLogModal] = useState(false);
     const [showWellnessModal, setShowWellnessModal] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -162,10 +181,10 @@ export default function DashboardPage() {
             supabase.from("dose_logs").select("*, peptides(name_es, half_life_hours, dose_unit)")
                 .eq("user_id", user.id)
                 .order("logged_at", { ascending: false })
-                .limit(20),
+                .limit(50), // Fetch more to find all unique peptides
             supabase.from("protocols").select("*, protocol_items(*, peptides(name_es))")
-                .eq("user_id", user.id).eq("is_active", true).limit(1),
-            supabase.from("wellness_logs").select("*").eq("user_id", user.id).eq("logged_date", today).single(),
+                .eq("user_id", user.id).eq("is_active", true),
+            supabase.from("wellness_logs").select("*").eq("user.id", user.id).eq("logged_date", today).single(),
         ]);
 
         setProfile(profileData);
@@ -173,42 +192,79 @@ export default function DashboardPage() {
         setRecentLogs(recentData || []);
         setWellness(wellnessData);
 
-        // Compute next scheduled dose
-        let currentItem = protocols?.[0]?.protocol_items?.[0] || null;
+        // ── Calculate Next Doses (Multiple) ──────────────────────────────────
+        const doses: any[] = [];
+        const seenPeptides = new Set<string>();
 
-        // Fallback: If no protocol, use the most recent log
-        if (!currentItem && recentLogs.length > 0) {
-            const last = recentLogs[0];
-            currentItem = {
-                peptide_id: last.peptide_id,
-                dose_amount: last.dose_amount,
-                dose_unit: last.dose_unit,
-                frequency_type: "daily", // Default assumption for visualization
-                peptides: last.peptides,
-                last_log_date: last.logged_at,
-                is_fallback: true
-            };
-        }
+        // 1. Process Active Protocols
+        if (protocols?.length) {
+            for (const p of protocols) {
+                for (const item of p.protocol_items) {
+                    if (seenPeptides.has(item.peptide_id)) continue;
 
-        if (currentItem) {
-            setNextProtocolItem(currentItem);
-
-            // If it's a real protocol item (not fallback with date already set), fetch last log
-            if (!currentItem.is_fallback) {
-                const { data: lastSpecificLog } = await supabase.from("dose_logs")
-                    .select("*")
-                    .eq("user_id", user.id)
-                    .eq("peptide_id", currentItem.peptide_id)
-                    .order("logged_at", { ascending: false })
-                    .limit(1)
-                    .single();
-
-                if (lastSpecificLog) {
-                    currentItem.last_log_date = lastSpecificLog.logged_at;
+                    // Find last log for this item
+                    const lastLog = recentData?.find((l: any) => l.peptide_id === item.peptide_id);
+                    doses.push({
+                        ...item,
+                        last_log_date: lastLog?.logged_at || null,
+                        source: 'protocol'
+                    });
+                    seenPeptides.add(item.peptide_id);
                 }
             }
-            setNextProtocolItem({ ...currentItem });
         }
+
+        // 2. Process Recent Logs (Fallback for non-protocol peptides)
+        if (recentData) {
+            for (const log of recentData) {
+                if (seenPeptides.has(log.peptide_id)) continue;
+
+                // Identify freq
+                let freq = "daily"; // default
+                const name = log.peptides?.name_es?.toLowerCase() || "";
+                for (const [k, v] of Object.entries(PEPTIDE_DEFAULTS)) {
+                    if (name.includes(k)) { freq = v; break; }
+                }
+
+                doses.push({
+                    peptide_id: log.peptide_id,
+                    dose_amount: log.dose_amount,
+                    dose_unit: log.dose_unit,
+                    frequency_type: freq,
+                    peptides: log.peptides,
+                    last_log_date: log.logged_at,
+                    source: 'log_fallback'
+                });
+                seenPeptides.add(log.peptide_id);
+            }
+        }
+
+        // 3. Calculate Date & Sort
+        const computedDoses = doses.map(item => {
+            const freqDays = getFrequencyDays(item.frequency_type);
+            let nextDate = new Date();
+            let label: string | null = null;
+            let isOverdue = false;
+
+            if (!item.last_log_date) {
+                // Never logged -> Start now
+                nextDate = new Date();
+                label = "Iniciar";
+            } else {
+                const lastMs = new Date(item.last_log_date).getTime();
+                nextDate = new Date(lastMs + freqDays * 86400000);
+
+                const diffHours = (nextDate.getTime() - new Date().getTime()) / 3600000;
+                if (diffHours < -24) {
+                    label = "Atrasada"; isOverdue = true;
+                } else if (diffHours <= 0) {
+                    label = "Ahora"; isOverdue = true;
+                }
+            }
+            return { ...item, nextDate, label, isOverdue, freqDays };
+        }).sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
+
+        setNextDoses(computedDoses);
         setLoading(false);
     };
 
@@ -224,44 +280,6 @@ export default function DashboardPage() {
     const lastDoseLabel = lastLog
         ? `${lastLog.dose_amount}${lastLog.peptides?.dose_unit || lastLog.dose_unit}`
         : "—";
-
-    // Next dose calculation
-    const nextDoseData = nextProtocolItem
-        ? (() => {
-            // Use specific last log date if checked, otherwise look in recent logs as fallback
-            const lastDateSrc = nextProtocolItem.last_log_date || recentLogs.find((l: any) => l.peptide_id === nextProtocolItem.peptide_id)?.logged_at;
-
-            if (!lastDateSrc) {
-                // Never logged: "Start now"
-                return { date: new Date(), label: "Iniciar", isOverdue: false };
-            }
-
-            const freqDays =
-                nextProtocolItem.frequency_type === "daily" ? 1 :
-                    nextProtocolItem.frequency_type === "eod" ? 2 :
-                        nextProtocolItem.frequency_type === "3x_week" ? 2 : // approx 2-3 days
-                            nextProtocolItem.frequency_type === "weekly" ? 7 : 7;
-
-            const nextDate = new Date(new Date(lastDateSrc).getTime() + freqDays * 86400000);
-            const now = new Date();
-            const diffHours = (nextDate.getTime() - now.getTime()) / 3600000;
-
-            if (diffHours < -24) {
-                // Overdue by more than a day
-                return { date: nextDate, label: "Atrasada", isOverdue: true };
-            } else if (diffHours <= 0) {
-                // Due now or very recently
-                return { date: nextDate, label: "Ahora", isOverdue: true };
-            } else {
-                return { date: nextDate, label: null, isOverdue: false };
-            }
-        })()
-        : null;
-
-    const intervalDays =
-        nextProtocolItem?.frequency_type === "daily" ? 1 :
-            nextProtocolItem?.frequency_type === "eod" ? 2 :
-                nextProtocolItem?.frequency_type === "weekly" ? 7 : 7;
 
     const weightKg = wellness?.weight_kg || profile?.weight_kg;
 
@@ -314,23 +332,28 @@ export default function DashboardPage() {
                     </div>
                 )}
 
-                {/* Next dose arc */}
-                {nextDoseData && (
+                {/* Next dose section (Carousel) */}
+                {nextDoses.length > 0 && (
                     <div>
-                        <h2 className="text-white font-bold text-[17px] mb-1">Próxima dosis</h2>
-                        <div className="bg-white/5 rounded-3xl pt-2 pb-4 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-                            <NextDoseArc
-                                nextDoseDate={nextDoseData.date}
-                                intervalDays={intervalDays}
-                                labelOverride={nextDoseData.label}
-                                isOverdue={nextDoseData.isOverdue}
-                            />
-                            {nextProtocolItem && (
-                                <p className="text-center text-white/40 text-[13px] mt-[-10px]">
-                                    {nextProtocolItem.peptides?.name_es} · {nextProtocolItem.dose_amount}{nextProtocolItem.dose_unit}
-                                </p>
-                            )}
+                        <h2 className="text-white font-bold text-[17px] mb-2">Próxima dosis</h2>
+                        <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 snap-x hide-scrollbar">
+                            {nextDoses.map((dose, i) => (
+                                <div key={i} className="min-w-[200px] bg-white/5 rounded-3xl pt-2 pb-4 relative overflow-hidden snap-center border border-white/5">
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                                    <NextDoseArc
+                                        nextDoseDate={dose.nextDate}
+                                        intervalDays={dose.freqDays}
+                                        labelOverride={dose.label}
+                                        isOverdue={dose.isOverdue}
+                                    />
+                                    <p className="text-center text-white/60 text-[13px] font-medium mt-[-10px] truncate px-2">
+                                        {dose.peptides?.name_es}
+                                    </p>
+                                    <p className="text-center text-white/30 text-[11px]">
+                                        {dose.dose_amount}{dose.dose_unit}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
