@@ -16,7 +16,7 @@ UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%Exenatida%
 
 -- Healing (Daily)
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%BPC-157%' OR name ILIKE '%BPC-157%';
-UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%TB-500%' OR name ILIKE '%TB-500%';
+UPDATE peptides SET default_frequency = 'biweekly' WHERE name_es ILIKE '%TB-500%' OR name ILIKE '%TB-500%';
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%KPV%' OR name ILIKE '%KPV%';
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%GHK-Cu%' OR name ILIKE '%GHK-Cu%';
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%LL-37%' OR name ILIKE '%LL-37%';
@@ -47,7 +47,7 @@ UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%Dihexa%' O
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%Cerebrolysin%' OR name ILIKE '%Cerebrolysin%';
 
 -- Sexual (As Needed -> Daily Default)
-UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%PT-141%' OR name ILIKE '%PT-141%';
+UPDATE peptides SET default_frequency = 'biweekly' WHERE name_es ILIKE '%PT-141%' OR name ILIKE '%PT-141%';
 UPDATE peptides SET default_frequency = 'daily' WHERE name_es ILIKE '%Melanotan%' OR name ILIKE '%Melanotan%';
 
 -- Longevity

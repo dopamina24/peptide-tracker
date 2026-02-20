@@ -14,7 +14,7 @@ export const PEPTIDE_DEFAULTS: Record<string, string> = {
 
     // ── Healing & Repair ─────────────────────────────────────────────────────
     "bpc-157": "daily",
-    "tb-500": "daily", // Often 2x week, but daily loading is common. Let's default to EOD or Daily. User can override with protocol.
+    "tb-500": "biweekly", // 2-2.5 mg twice weekly (loading), then 1x weekly. Default to biweekly (2x/week) as common protocol.
     "thymosin beta 4": "daily",
     "kpv": "daily",
     "ll-37": "daily",
@@ -65,7 +65,7 @@ export const PEPTIDE_DEFAULTS: Record<string, string> = {
     "klotho": "daily", // theoretical
 
     // ── Sexual & Performance ────────────────────────────────────────────────
-    "pt-141": "daily", // "As needed", but for tracker fallback daily is safer or assume active protocol
+    "pt-141": "biweekly", // "As needed", max 8x month (~2x week). Defaulting to biweekly.
     "melanotan 1": "daily",
     "melanotan 2": "daily", // loading phase daily, then weekly. Default daily safer for active phase.
     "kisspeptin-10": "daily",
